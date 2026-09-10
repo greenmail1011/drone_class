@@ -201,6 +201,24 @@
   .sync{font-size:11px;color:var(--ink-3);margin-top:10px;display:flex;align-items:center;gap:6px;}
   .sync i{width:6px;height:6px;border-radius:50%;background:var(--ink-3);display:inline-block;}
   .sync.ok i{background:var(--brand);}
+  .sync.warn i{background:var(--pm);}
+  .sync.warn span{color:var(--brand);}
+
+  .setup{
+    background:var(--am-soft);border:1px solid var(--am-edge);border-left:4px solid var(--am);
+    border-radius:10px;padding:16px 18px;margin:24px 0 0;font-size:13px;color:var(--ink-2);
+  }
+  .setup strong{display:block;color:var(--ink);font-size:14px;margin-bottom:4px;}
+  .setup p{margin:0 0 8px;}
+  .setup ol{margin:0;padding-left:20px;}
+  .setup li{margin-bottom:4px;}
+  .setup li:last-child{margin-bottom:0;}
+  .setup b{color:var(--ink);font-weight:700;}
+  .setup code{
+    font-family:"IBM Plex Mono",monospace;font-size:12px;
+    background:var(--surface);border:1px solid var(--line-2);border-radius:4px;padding:1px 5px;
+    word-break:break-all;
+  }
 
   .toast{
     position:fixed;left:50%;bottom:26px;transform:translate(-50%,14px);
@@ -233,8 +251,19 @@
   <header>
     <p class="eyebrow">生活輔導中心 · 無人機課程</p>
     <h1>無人機課程排課表</h1>
-    <p class="lede">把可以開課的時段勾起來。共 <b>26 天</b>（週二 17 天、週五 9 天）、<b>37 個時段</b>；標「整天」的日期拆成早上與下午，可以各自勾選。<br>勾選會自動記住，下次打開還在。</p>
+    <p class="lede" id="lede"></p>
   </header>
+
+  <div class="setup" id="setup" hidden>
+    <strong>還沒設定共用資料庫</strong>
+    <p>現在的勾選只存在這台電腦的瀏覽器裡，別人打開看不到。要讓所有人看到同一份，設定一次就好：</p>
+    <ol>
+      <li>到 <b>console.firebase.google.com</b> 新增一個專案（免費）</li>
+      <li>左側「建構 → <b>Realtime Database</b> → 建立資料庫」，地區選 <b>asia-southeast1</b>，規則選「以測試模式啟動」</li>
+      <li>複製資料庫網址（<code>https://…firebasedatabase.app</code>）</li>
+      <li>用文字編輯器打開這個 HTML 檔，貼到最上面 <code>var DB_URL = ""</code> 的引號裡，存檔後 push 到 GitHub</li>
+    </ol>
+  </div>
 
   <div class="bar">
     <div class="stats">
@@ -273,10 +302,28 @@
 (function(){
   "use strict";
 
+  /* =====================================================================
+     共用資料庫設定 —— 想讓所有人看到同一份勾選，只要填這一行
+     ---------------------------------------------------------------------
+     1. 到 https://console.firebase.google.com 新增一個專案（免費）
+     2. 左側「建構 → Realtime Database → 建立資料庫」
+        地區選 asia-southeast1，安全性規則先選「以測試模式啟動」
+     3. 複製上方的資料庫網址，貼到下面 DB_URL 的引號裡，例如：
+        var DB_URL = "https://xxxx-default-rtdb.asia-southeast1.firebasedatabase.app";
+     4. 存檔 → push 到 GitHub，完成。之後任何人打開這個網頁，
+        勾選都會即時同步給所有人（幾秒內）。
+
+     建議把規則改成只開放這一份資料（Realtime Database → 規則 → 貼上 → 發布）：
+       { "rules": { "schedule": { ".read": true, ".write": true } } }
+     注意：這代表知道網址的人都能改。內部排課用沒問題，別放機密資料。
+     ===================================================================== */
+  var DB_URL  = "https://drone-course-schedule-default-rtdb.asia-southeast1.firebasedatabase.app";
+  var DB_PATH = "/schedule/selections";
+
+
   var SLOTS = [
-    {d:"2026-09-18", p:["pm"]},
     {d:"2026-09-22", p:["pm"]},
-    {d:"2026-09-29", p:["pm"]},
+    {d:"2026-09-29", p:["pm"], note:"精油課－待確認個案狀況"},
     {d:"2026-10-06", p:["am","pm"]},
     {d:"2026-10-13", p:["am"]},
     {d:"2026-10-16", p:["pm"]},
@@ -284,22 +331,16 @@
     {d:"2026-10-23", p:["am"]},
     {d:"2026-10-27", p:["am","pm"]},
     {d:"2026-11-03", p:["am","pm"]},
-    {d:"2026-11-06", p:["am","pm"]},
     {d:"2026-11-10", p:["pm"]},
-    {d:"2026-11-13", p:["pm"]},
     {d:"2026-11-17", p:["am","pm"]},
     {d:"2026-11-24", p:["pm"]},
     {d:"2026-12-01", p:["am","pm"]},
     {d:"2026-12-08", p:["pm"]},
-    {d:"2026-12-11", p:["pm"]},
     {d:"2026-12-15", p:["am","pm"]},
-    {d:"2026-12-18", p:["am"]},
     {d:"2026-12-22", p:["am","pm"]},
     {d:"2026-12-29", p:["pm"]},
     {d:"2027-01-05", p:["am","pm"], note:"輔諮慶功宴"},
-    {d:"2027-01-08", p:["pm"]},
-    {d:"2027-01-12", p:["am","pm"]},
-    {d:"2027-01-15", p:["pm"]}
+    {d:"2027-01-12", p:["am","pm"]}
   ];
 
   var MONTHS = [[2026,9],[2026,10],[2026,11],[2026,12],[2027,1]];
@@ -319,6 +360,15 @@
 
   var ALL_KEYS = [];
   SLOTS.forEach(function(s){ s.p.forEach(function(p){ ALL_KEYS.push(key(s.d,p)); }); });
+
+  var TOT = ALL_KEYS.length;
+  var TUE_TOT = 0;
+  ALL_KEYS.forEach(function(k){ if (wd(k.split("|")[0]) === 2) TUE_TOT++; });
+  var FRI_TOT = TOT - TUE_TOT;
+  var DAY_TOT = SLOTS.length;
+  var TUE_DAYS = 0;
+  SLOTS.forEach(function(s){ if (wd(s.d) === 2) TUE_DAYS++; });
+  var FRI_DAYS = DAY_TOT - TUE_DAYS;
 
   var picks = {};
   var chipEls = {};
@@ -403,6 +453,7 @@
           var n = document.createElement("div");
           n.className = "cellnote";
           n.textContent = slot.note;
+          n.title = slot.note;
           cell.appendChild(n);
         }
       }
@@ -411,6 +462,13 @@
     sec.appendChild(grid);
     host.appendChild(sec);
   });
+
+  var lede = document.getElementById("lede");
+  if (lede){
+    lede.innerHTML = "把可以開課的時段勾起來。共 <b>" + DAY_TOT + " 天</b>（週二 " + TUE_DAYS +
+      " 天、週五 " + FRI_DAYS + " 天）、<b>" + TOT + " 個時段</b>；標「整天」的日期拆成早上與下午，" +
+      "可以各自勾選。<br>勾選會自動記住，下次打開還在。";
+  }
 
   /* ---------- painting ---------- */
   var elTotal = document.getElementById("s-total");
@@ -452,10 +510,10 @@
     });
 
     var sel = selectedKeys();
-    elTotal.innerHTML = sel.length + '<small> / 37</small>';
-    elTue.innerHTML = tue + '<small> / 27</small>';
-    elFri.innerHTML = fri + '<small> / 10</small>';
-    elDays.innerHTML = Object.keys(days).length + '<small> / 26</small>';
+    elTotal.innerHTML = sel.length + '<small> / ' + TOT + '</small>';
+    elTue.innerHTML = tue + '<small> / ' + TUE_TOT + '</small>';
+    elFri.innerHTML = fri + '<small> / ' + FRI_TOT + '</small>';
+    elDays.innerHTML = Object.keys(days).length + '<small> / ' + DAY_TOT + '</small>';
 
     if (!sel.length){
       elSub.textContent = "尚未勾選";
@@ -541,6 +599,7 @@
   var syncEl = document.getElementById("sync");
   function setSync(state, label){
     syncEl.classList.toggle("ok", state === "ok");
+    syncEl.classList.toggle("warn", state === "warn");
     syncEl.querySelector("span").textContent = label;
   }
   function stamp(iso){
@@ -549,12 +608,16 @@
     var pad = function(n){ return String(n).padStart(2,"0"); };
     return pad(t.getMonth()+1) + "/" + pad(t.getDate()) + " " + pad(t.getHours()) + ":" + pad(t.getMinutes());
   }
-  function savedAt(iso){ setSync("ok", "已自動儲存 · " + stamp(iso)); }
+  function savedAt(iso, label){ setSync("ok", (label || "已同步") + " · " + stamp(iso)); }
 
   function readLocal(){
     try {
       var raw = localStorage.getItem(LS_KEY);
-      if (raw) return JSON.parse(raw) || {};
+      if (raw){
+        var o = JSON.parse(raw) || {}, clean = {};
+        ALL_KEYS.forEach(function(k){ if (o[k]) clean[k] = true; });
+        return clean;
+      }
     } catch(err){}
     return {};
   }
@@ -562,57 +625,159 @@
     try { localStorage.setItem(LS_KEY, JSON.stringify(picks)); } catch(err){}
   }
 
-  var docRef = null, pending = 0, saveT = null, seeded = false;
+  var mode = "local";
+  var remoteKnown = {};
+  var pendingWrites = 0;
+  var saveT = null, refreshT = null;
 
   function save(){
     writeLocal();
-    if (!docRef){ setSync("local", "已存在這台裝置 · " + stamp()); return; }
-    pending++;
-    setSync("saving", "儲存中…");
-    clearTimeout(saveT);
-    saveT = setTimeout(function(){
-      var snapshot = {};
-      Object.keys(picks).forEach(function(k){ snapshot[k] = true; });
-      var n = pending;
-      docRef.set({ picks: snapshot, updatedAt: new Date().toISOString() }).then(function(){
-        pending -= n;
-        if (pending < 0) pending = 0;
-        savedAt();
-      }, function(){
-        pending -= n;
-        if (pending < 0) pending = 0;
-        setSync("local", "已存在這台裝置（未同步）");
-      });
-    }, 450);
+    if (mode === "cloud"){
+      setSync("wait", "儲存中…");
+      clearTimeout(saveT);
+      saveT = setTimeout(pushCloud, 400);
+      return;
+    }
+    if (mode === "claude"){
+      setSync("wait", "儲存中…");
+      clearTimeout(saveT);
+      saveT = setTimeout(pushClaude, 400);
+      return;
+    }
+    setSync("local", "已存在這台裝置 · " + stamp());
   }
 
+  function adoptRemote(obj, iso, label){
+    picks = {}; remoteKnown = {};
+    if (obj) ALL_KEYS.forEach(function(k){
+      if (obj[k]) { picks[k] = true; remoteKnown[k] = true; }
+    });
+    writeLocal();
+    paint();
+    savedAt(iso, label);
+  }
+
+  /* --- A. 共用雲端資料庫（Firebase Realtime Database REST，不需要任何函式庫） --- */
+  function dbUrl(){ return DB_URL.replace(/\/+$/, "") + DB_PATH; }
+
+  function cloudRefresh(){
+    if (pendingWrites > 0) return;
+    fetch(dbUrl() + ".json", { cache: "no-store" })
+      .then(function(r){ if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function(d){
+        if (pendingWrites > 0) return;
+        adoptRemote(d && d.picks, d && d.meta && d.meta.updatedAt, "多人共用 · 已同步");
+      })
+      .catch(function(){ setSync("warn", "連不到雲端，暫存在這台裝置"); });
+  }
+
+  function pushCloud(){
+    var body = {}, changed = false;
+    ALL_KEYS.forEach(function(k){
+      var want = !!picks[k], have = !!remoteKnown[k];
+      if (want !== have){ body["picks/" + k] = want ? true : null; changed = true; }
+    });
+    if (!changed){ savedAt(null, "多人共用 · 已同步"); return; }
+    body["meta/updatedAt"] = new Date().toISOString();
+    pendingWrites++;
+    fetch(dbUrl() + ".json", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function(r){
+      if (!r.ok) throw new Error(r.status);
+      ALL_KEYS.forEach(function(k){ if (picks[k]) remoteKnown[k] = true; else delete remoteKnown[k]; });
+      savedAt(null, "多人共用 · 已同步");
+    }).catch(function(){
+      setSync("warn", "雲端儲存失敗，暫存在這台裝置");
+    }).then(function(){
+      pendingWrites--;
+      if (pendingWrites < 0) pendingWrites = 0;
+    });
+  }
+
+  function startCloud(){
+    mode = "cloud";
+    setSync("wait", "連線中…");
+    cloudRefresh();
+    if (typeof EventSource === "function"){
+      try {
+        var es = new EventSource(dbUrl() + ".json");
+        var bump = function(){
+          clearTimeout(refreshT);
+          refreshT = setTimeout(cloudRefresh, 200);
+        };
+        es.addEventListener("put", bump);
+        es.addEventListener("patch", bump);
+        es.addEventListener("cancel", function(){ setSync("warn", "資料庫規則不允許讀取"); });
+        es.onerror = function(){ /* EventSource 會自己重連 */ };
+        setInterval(cloudRefresh, 30000);
+        return;
+      } catch(err){}
+    }
+    setInterval(cloudRefresh, 15000);
+  }
+
+  /* --- B. Claude Artifact 內建資料庫 --- */
+  var claudeDoc = null;
+
+  function pushClaude(){
+    if (!claudeDoc) return;
+    var snap = {};
+    Object.keys(picks).forEach(function(k){ snap[k] = true; });
+    pendingWrites++;
+    claudeDoc.set({ picks: snap, updatedAt: new Date().toISOString() }).then(function(){
+      savedAt(null, "已自動儲存");
+    }, function(){
+      setSync("warn", "雲端儲存失敗，暫存在這台裝置");
+    }).then(function(){
+      pendingWrites--;
+      if (pendingWrites < 0) pendingWrites = 0;
+    });
+  }
+
+  function startClaude(db){
+    mode = "claude";
+    claudeDoc = db.doc("schedule/selections");
+    var seeded = false;
+    claudeDoc.onSnapshot(function(snap){
+      if (pendingWrites > 0) return;
+      var data = snap.exists ? snap.data() : null;
+      var remote = (data && data.picks) ? data.picks : null;
+      if (!seeded){
+        seeded = true;
+        if (!remote || !Object.keys(remote).length){
+          if (Object.keys(picks).length){ save(); return; }
+          setSync("ok", "已連線，勾選會自動儲存");
+          return;
+        }
+      }
+      adoptRemote(remote, data && data.updatedAt, "已自動儲存");
+    }, function(){ setSync("warn", "雲端儲存失敗，暫存在這台裝置"); });
+  }
+
+  /* --- 啟動 --- */
   picks = readLocal();
   paint();
-  setSync("local", Object.keys(picks).length ? "已存在這台裝置" : "尚未儲存");
+
+  function cloudOrLocal(){
+    if (DB_URL) startCloud();
+    else setSync("local", "僅存在這台裝置");
+  }
 
   if (window.claude && typeof window.claude.use === "function"){
+    /* 在 Claude Artifact 裡：外部網域被封鎖，改用 Artifact 自己的雲端資料庫 */
+    setSync("wait", "連線中…");
     window.claude.use("db").then(function(db){
-      if (!db) return;
-      docRef = db.doc("schedule/selections");
-      docRef.onSnapshot(function(snap){
-        if (pending > 0) return;
-        var data = snap.exists ? snap.data() : null;
-        var remote = (data && data.picks) ? data.picks : null;
-        if (!seeded){
-          seeded = true;
-          if (!remote || !Object.keys(remote).length){
-            if (Object.keys(picks).length){ save(); return; }
-            setSync("ok", "已連線，勾選會自動儲存");
-            return;
-          }
-        }
-        picks = {};
-        if (remote) Object.keys(remote).forEach(function(k){ if (remote[k]) picks[k] = true; });
-        writeLocal();
-        paint();
-        savedAt(data && data.updatedAt);
-      }, function(){ setSync("local", "已存在這台裝置（未同步）"); });
-    }, function(){});
+      if (db) startClaude(db);
+      else cloudOrLocal();
+    }, cloudOrLocal);
+  } else if (DB_URL){
+    startCloud();
+  } else {
+    setSync("warn", "未設定共用資料庫 — 勾選只存在這台裝置");
+    var box = document.getElementById("setup");
+    if (box) box.hidden = false;
   }
 })();
 </script>
